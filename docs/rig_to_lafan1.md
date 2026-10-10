@@ -139,6 +139,39 @@ ped3's 31 % is dominated by two coincident head-tip joints that the model gave
 27 % of the weight mass to (the asset has long hair); re-routing it onto `Head`
 is exactly right and keeps the hair attached to the head.
 
+## End-to-end refinement flow (`--use_skeleton`)
+
+TokenRig can take a **rigged** GLB as input and predict skinning weights *for
+that exact skeleton* (the input skeleton tokens become a fixed prefix; the model
+only fills in the skin tokens).  That gives a clean way to obtain weights that
+were predicted for the 22-joint skeleton, instead of merged into it:
+
+```
+raw mesh
+ └─ demo.py                          -> pedN.glb             34/64 joints, free generation
+     └─ rig_to_lafan1.py             -> rig22/pedN.glb       22 joints, weights merged
+         └─ demo.py --use_skeleton   -> reskin22/pedN.glb    22 joints kept, weights re-predicted
+             └─ rig_to_lafan1.py     -> reskin22_lafan1/…    22 joints, 0 % weight re-routed
+```
+
+The same tool can of course re-skin a rig *without* collapsing first
+(`Ped_Assets_output/reskin/` -> `reskin_lafan1/`), which keeps the model's own
+34/64-joint skeleton and only merges afterwards.
+
+Measured on the five `ped_assets`:
+
+| variant | joints | weight mass re-routed | weights predicted for |
+|---|---|---|---|
+| `rig22/` | 22 | 1.3 % – 31.1 % | the 34/64-joint skeleton, then merged |
+| `reskin_lafan1/` | 22 | 1.5 % – 35.8 % | the 34/64-joint skeleton, then merged |
+| `reskin22_lafan1/` | 22 | **0 %** | the 22-joint skeleton directly |
+
+All three pass identical checks: 22 joints, LaFAN1 names **and** parent
+hierarchy, weight row sums ~1e-7, joint world positions ~1e-16.  The
+dominant-bone colour maps of `rig22/` and `reskin22_lafan1/` are visually
+equivalent, so the cheaper first option is usually enough; the re-skin pass is
+there when you want weights that never saw the finger bones.
+
 ## Limitations
 
 * **Fingers and toes lose articulation.** After collapsing, those vertices move
