@@ -22,13 +22,28 @@ from ..tokenizer.spec import Tokenizer
 from ..tokenizer.spec import DetokenizeOutput
 from ..tokenizer.parse import get_tokenizer
 
+def _sdpa_flash_attn_func(q, k, v, *args, **kwargs):
+    """Fallback with FA3-style layout (B, L, H, D) in and out."""
+    dtype = q.dtype
+    out = F.scaled_dot_product_attention(
+        q.transpose(1, 2).to(dtype),
+        k.transpose(1, 2).to(dtype),
+        v.transpose(1, 2).to(dtype),
+    )
+    return out.transpose(1, 2).to(dtype), None
+
+
 try:
     from flash_attn_interface import flash_attn_func # type: ignore
-except Exception as e:
-    from flash_attn.flash_attn_interface import flash_attn_func as _flash_attn_func
-    def flash_attn_func(*args, **kwargs):
-        res = _flash_attn_func(*args, **kwargs)
-        return res, None
+except Exception:
+    try:
+        from flash_attn.flash_attn_interface import flash_attn_func as _flash_attn_func
+
+        def flash_attn_func(*args, **kwargs):
+            res = _flash_attn_func(*args, **kwargs)
+            return res, None
+    except Exception:
+        flash_attn_func = _sdpa_flash_attn_func
 
 class VocabSwitchingLogitsProcessor(LogitsProcessor):
     def __init__(self, tokenizer: Tokenizer, switch_token_id, eos_token_id, tokens_per_skin, init):
@@ -106,7 +121,13 @@ class TokenRig(ModelSpec):
         llm_config.torch_dtype = torch.bfloat16
         llm_config.pre_norm = True
         self.llm_config = llm_config
-        self.transformer = AutoModelForCausalLM.from_config(config=llm_config, attn_implementation="flash_attention_2").to(torch.bfloat16)
+        try:
+            from transformers.utils import is_flash_attn_2_available
+            _attn_impl = "flash_attention_2" if is_flash_attn_2_available() else "sdpa"
+        except Exception:
+            _attn_impl = "sdpa"
+        print(f"[TokenRig] attention implementation: {_attn_impl}")
+        self.transformer = AutoModelForCausalLM.from_config(config=llm_config, attn_implementation=_attn_impl).to(torch.bfloat16)
         
         self.output_proj = nn.Sequential(
             nn.Linear(self.mesh_encoder.width, self.hidden_size),

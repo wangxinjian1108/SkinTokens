@@ -15,13 +15,28 @@ from src.rig_package.info.asset import Asset
 from .spec import ModelSpec, ModelInput, VaeInput
 from .skin_vae.autoencoders import SkinFSQCVAEModel
 
+def _sdpa_flash_attn_func(q, k, v, *args, **kwargs):
+    """Fallback with FA3-style layout (B, L, H, D) in and out."""
+    dtype = q.dtype
+    out = F.scaled_dot_product_attention(
+        q.transpose(1, 2).to(dtype),
+        k.transpose(1, 2).to(dtype),
+        v.transpose(1, 2).to(dtype),
+    )
+    return out.transpose(1, 2).to(dtype), None
+
+
 try:
     from flash_attn_interface import flash_attn_func # type: ignore
-except Exception as e:
-    from flash_attn.flash_attn_interface import flash_attn_func as _flash_attn_func
-    def flash_attn_func(*args, **kwargs):
-        res = _flash_attn_func(*args, **kwargs)
-        return res, None
+except Exception:
+    try:
+        from flash_attn.flash_attn_interface import flash_attn_func as _flash_attn_func
+
+        def flash_attn_func(*args, **kwargs):
+            res = _flash_attn_func(*args, **kwargs)
+            return res, None
+    except Exception:
+        flash_attn_func = _sdpa_flash_attn_func
 
 class Perceiver(nn.Module):
     def __init__(self, channels, out_tokens, num_heads=8):

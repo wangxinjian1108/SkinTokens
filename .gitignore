@@ -14,6 +14,10 @@ env/
 # ignore tmp & output files
 _data/
 ckpt/
+# generated rigs / previews (reproducible with scripts/rig_to_lafan1.py)
+Ped_Assets_output/
+# editor / patch backups
+*.orig
 configs/
 tmp/
 tmp_fusion/
