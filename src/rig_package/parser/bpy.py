@@ -561,7 +561,6 @@ def make_asset(
             p = asset.parents[i]
             if p == -1:
                 continue
-            sons[p].append(i)
             d = np.linalg.norm(joints[i] - joints[p])
             if d <= length * 1e-2:
                 max_d = max(length, 1e-5)
