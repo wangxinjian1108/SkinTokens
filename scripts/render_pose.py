@@ -46,6 +46,8 @@ def setup_camera(scene, meshes):
     cam.rotation_mode = "QUATERNION"
     cam.rotation_quaternion = (center - cam.location).to_track_quat("-Z", "Y")
     cam_data.lens = 50
+    # blender's default clip_end of 100 hides models whose own scale is large
+    cam_data.clip_end = max(100.0, radius * 20)
     return cam
 
 
